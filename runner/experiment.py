@@ -59,6 +59,32 @@ class ExperimentRunner:
         return results
 
     @staticmethod
+    def run_combined(config: RunConfig, step_fn: Callable[[], tuple]) -> dict:
+        """Run experiment where step_fn returns (params, fom) in one call."""
+        np.random.seed(config.seed)
+        results = {
+            "method": config.method, "circuit": config.circuit,
+            "n_iterations": config.n_iterations, "seed": config.seed,
+            "iterations": [],
+        }
+        start_time = time.time()
+        best_fom = -float("inf")
+        best_params = None
+        for i in range(config.n_iterations):
+            params, fom = step_fn()
+            results["iterations"].append({
+                "iter": i, "params": np.asarray(params).tolist(),
+                "fom": float(fom), "timestamp": time.time() - start_time,
+            })
+            if fom > best_fom:
+                best_fom = fom
+                best_params = np.asarray(params).tolist()
+        results["best_fom"] = float(best_fom)
+        results["best_params"] = best_params
+        results["total_time"] = time.time() - start_time
+        return results
+
+    @staticmethod
     def save_results(results: dict, path: str):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
