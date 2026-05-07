@@ -2,3 +2,6 @@ analoggym/
 .claude/
 __pycache__/
 .local/
+.pytest_cache/
+results/
+LOG.md

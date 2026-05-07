@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from runner.experiment import ExperimentRunner, RunConfig
 from bo_baseline.bo_solver import BOSolver
