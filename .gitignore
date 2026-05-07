@@ -1,2 +1,4 @@
 analoggym/
 .claude/
+__pycache__/
+.local/
