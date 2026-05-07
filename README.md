@@ -27,7 +27,9 @@ analogopt/
 ├── env_interface/               ← [自建] AnalogGym 环境适配
 │   └── analoggym_adapter.py     ←    封装 AMPNMCFEnv 为标准评估接口
 │
-├── experiments/                 ← [自建] 实验入口脚本
+├── experiments/                 ← [自建] 实验入口
+│   ├── run.py                   ←    BO / LLM+BO
+│   └── run_rl.py                ←    RL (DDPG+RGCN)
 ├── tests/                       ← [自建] 15 个单元测试
 ├── results/                     ← 实验结果 (JSON)
 ├── report/                      ← 作业报告
@@ -92,51 +94,32 @@ unzip analoggym/PDK/sky130_pdk.zip -d analoggym/RGNN_RL/mosfet_model/
 python -m pytest tests/ -v
 
 # BO 实验 (20 迭代, 10 初始采样)
-nix-shell -p ngspice --run "python run_real_experiments.py --method bo --iterations 20"
+nix-shell -p ngspice --run "python experiments/run.py --method bo --iterations 20"
 
 # LLM+BO 实验 (需要 API 环境变量)
 export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
 export ANTHROPIC_AUTH_TOKEN="..."
 export ANTHROPIC_MODEL="deepseek-v4-pro[1m]"
-nix-shell -p ngspice --run "python run_real_experiments.py --method llmbo --iterations 20"
+nix-shell -p ngspice --run "python experiments/run.py --method llmbo --iterations 20"
 
-# 查看结果对比
-python -c "
-from runner.experiment import ExperimentRunner
-bo = ExperimentRunner.load_results('results/bo_nmcf_results.json')
-llmbo = ExperimentRunner.load_results('results/llmbo_nmcf_results.json')
-print(ExperimentRunner.compare([bo, llmbo]))
-"
+# RL 实验 (DDPG + RGCN)
+nix-shell -p ngspice --run "python experiments/run_rl.py --steps 500"
 ```
 
-## 实验结果
+## 实验结果 (2026-05-07)
 
-### BO vs LLM+BO (2026-05-07, 各 30 次评估)
+### 三方对比
 
-| 方法 | 最佳 FoM | 时间 | 备注 |
-|------|----------|------|------|
-| BO (BoTorch) | **-1.3923** | 83.8s | GP + EI |
-| LLM+BO | -1.5063 | 1345.7s | BO + DeepSeek LLM 提议 |
-
-#### 迭代对比
-
-```
-Iter    BO FoM    LLMBO FoM    BO Best   LLMBO Best
-   0   -1.5063    -1.5063     -1.5063    -1.5063
-   1   -1.3923    -1.6574     -1.3923    -1.5063    ← BO 找到最优
-   2   -1.5712    -1.8633     -1.3923    -1.5063
-   3   -2.0489    -3.6479     -1.3923    -1.5063
-   4   -1.6102    -1.7518     -1.3923    -1.5063
-   5   -2.5628    -1.7511     -1.3923    -1.5063
-   6   -3.4556    -1.6444     -1.3923    -1.5063
-   7   -1.5685    -1.6172     -1.3923    -1.5063
-   8   -1.5713    -2.3935     -1.3923    -1.5063
-   9   -2.8557    -4.1196     -1.3923    -1.5063
-```
+| 方法 | 最佳 FoM | 时间 | 评估次数 | 备注 |
+|------|----------|------|----------|------|
+| **BO (BoTorch)** | -1.3923 | 83.8s | 30 | GP + EI, **效率最佳** |
+| LLM+BO | -1.5063 | 1345.7s | 30 | BO + DeepSeek, LLM 未带来增益 |
+| RL (DDPG+RGCN) | **-1.2446** | 1903.9s | 200 | **最优 FoM**, 需更多样本 |
 
 ### 关键发现
-- BO 在当前设置下优于 LLM+BO（更好的 FoM，更快的速度）
-- LLM API 调用显著增加时间成本（~1345s vs ~84s）
+- **BO 效率最高**：30 次评估达 -1.39，适合有限仿真预算
+- **RL 潜力最大**：200 步达 -1.24，但需 6.7x 样本。CPU 可跑（模型很小，瓶颈是仿真）
+- **LLM+BO 未达预期**：简单 prompt 无电路领域知识，API 耗时远大于 BO 改进
 - LLM 提议的候选点未带来明显收益，可能原因：prompt 设计简单、LLM 缺乏电路领域训练
 
 ## dev_params.py 说明
