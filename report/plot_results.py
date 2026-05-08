@@ -29,7 +29,7 @@ def plot_convergence(bo, llmbo, rl, out):
     ax1.plot(range(len(rl_foms)), rl_foms, alpha=0.4, linewidth=0.5, label=f"RL (best={max(rl_foms):.3f})", color="#4CAF50")
     ax1.set_xlabel("Iteration")
     ax1.set_ylabel("FoM")
-    ax1.set_title("Per-Evaluation FoM")
+    ax1.set_title("Per-Iteration Best FoM")
     ax1.legend(fontsize=8)
     ax1.grid(True, alpha=0.3)
 
