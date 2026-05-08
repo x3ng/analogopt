@@ -58,6 +58,10 @@ unzip analoggym/PDK/sky130_pdk.zip -d analoggym/RGNN_RL/mosfet_model/
 
 # 验证
 python -m pytest tests/ -v
+
+# Clone LLANA (LLM-Enhanced BO, arXiv 2406.05250)
+git clone --depth 1 https://github.com/dekura/LLANA.git llana
+cp scripts/llana_patches/llambo/*.py llana/llambo/
 ```
 
 ### Nix 用户
@@ -93,6 +97,13 @@ python experiments/run.py --method llmbo --iterations 20
 
 # RL 实验
 python experiments/run_rl.py --steps 500
+
+# LLANA 实验 (LLM 替代 GP 做 surrogate + acquisition, 需先配置 LLANA)
+nix-shell -p ngspice --run "python experiments/run_llana.py"
+
+# 快速验证 LLANA 管道 (3+3 轮)
+LLANA_TRIALS=3 LLANA_INITIAL=3 nix-shell -p ngspice --run \
+    "python experiments/run_llana.py"
 
 # 查看结果
 python -c "
