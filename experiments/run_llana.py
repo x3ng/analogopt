@@ -5,6 +5,10 @@ learning, using few-shot prompting instead of mathematical models.
 
 Based on: https://github.com/dekura/LLANA (arXiv 2406.05250)
 
+The default parameters are conservative (n_gens=3, n_candidates=5, n_templates=1)
+to avoid overwhelming the API with concurrent requests. Each trial makes ~15
+API calls (down from ~200 with the original LLANA defaults of 10/10/2).
+
 Usage:
     # Full experiment (5 initial + 15 trials, ~60 min)
     nix-shell -p ngspice --run "python experiments/run_llana.py"
@@ -24,6 +28,9 @@ Configuration via environment variables:
     LLANA_MODEL     — model name (default: deepseek-chat)
     LLANA_TRIALS    — optimization trials (default: 15)
     LLANA_INITIAL   — initial random samples (default: 5)
+    LLANA_GENS      — LLM generations per candidate (default: 3)
+    LLANA_CANDIDATES— candidate points per trial (default: 5)
+    LLANA_TEMPLATES — prompt templates (default: 1)
 Note: deepseek-chat is used instead of deepseek-v4-pro because the reasoning
 model (v4-pro) returns empty content for long prompts via the OpenAI-compatible
 endpoint.
@@ -49,6 +56,10 @@ def main():
     model = os.environ.get("LLANA_MODEL", "deepseek-chat")
     n_trials = int(os.environ.get("LLANA_TRIALS", "15"))
     n_initial = int(os.environ.get("LLANA_INITIAL", "5"))
+    # Use conservative defaults to avoid API rate limits
+    n_gens = int(os.environ.get("LLANA_GENS", "3"))
+    n_candidates = int(os.environ.get("LLANA_CANDIDATES", "5"))
+    n_templates = int(os.environ.get("LLANA_TEMPLATES", "1"))
 
     # Ensure API key is available for OpenAI SDK
     os.environ.setdefault("OPENAI_API_KEY", api_key)
@@ -57,6 +68,7 @@ def main():
     print(f"  base_url: {base_url}")
     print(f"  model: {model}")
     print(f"  n_trials: {n_trials}, n_initial: {n_initial}")
+    print(f"  n_gens: {n_gens}, n_candidates: {n_candidates}, n_templates: {n_templates}")
 
     env = AnalogGymInterface()
     bounds = env.bounds  # shape (24, 2), normalized [-1, 1]
@@ -108,9 +120,9 @@ def main():
     llambo = LLAMBO(
         task_context=task_context,
         sm_mode="discriminative",
-        n_candidates=10,
-        n_templates=2,
-        n_gens=10,
+        n_candidates=n_candidates,
+        n_templates=n_templates,
+        n_gens=n_gens,
         alpha=-0.2,
         n_initial_samples=n_initial,
         n_trials=n_trials,
@@ -123,7 +135,36 @@ def main():
         shuffle_features=False,
     )
 
-    configs_df, fvals_df = llambo.optimize()
+    output_path = Path(__file__).parent.parent / "results" / "llana_nmcf_results.json"
+
+    try:
+        configs_df, fvals_df = llambo.optimize()
+    except Exception as e:
+        print(f"\n!!! LLANA crashed: {e}")
+        print(f"  Saving partial results ({len(all_iterations)} evals) to {output_path}")
+        import traceback
+        traceback.print_exc()
+        # Save whatever we have
+        if all_iterations:
+            partial = {
+                "method": "llana",
+                "circuit": "NMCF",
+                "n_iterations": len(all_iterations),
+                "seed": 42,
+                "best_fom": max(it["fom"] for it in all_iterations),
+                "best_params": [],
+                "total_time": time.time() - start_time,
+                "config": {"base_url": base_url, "model": model,
+                           "n_trials": n_trials, "n_initial": n_initial,
+                           "n_gens": n_gens, "n_candidates": n_candidates,
+                           "n_templates": n_templates},
+                "iterations": all_iterations,
+                "crashed": True,
+            }
+            ExperimentRunner.save_results(partial, str(output_path))
+            print(f"  Saved {len(all_iterations)} evals to {output_path}")
+        env.close()
+        raise
 
     total_time = time.time() - start_time
     env.close()
@@ -146,11 +187,13 @@ def main():
             "model": model,
             "n_trials": n_trials,
             "n_initial": n_initial,
+            "n_gens": n_gens,
+            "n_candidates": n_candidates,
+            "n_templates": n_templates,
         },
         "iterations": all_iterations,
     }
 
-    output_path = Path(__file__).parent.parent / "results" / "llana_nmcf_results.json"
     ExperimentRunner.save_results(results, str(output_path))
 
     print(f"\n=== LLANA Results ===")
