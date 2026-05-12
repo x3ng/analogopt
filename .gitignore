@@ -3,7 +3,7 @@ analoggym/
 /llana/
 .claude/
 __pycache__/
-.local/
+.venv/
 .pytest_cache/
 results/
 LOG.md

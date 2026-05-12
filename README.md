@@ -6,107 +6,101 @@
 
 ```
 analogopt/
-├── README.md                    ← 本文件
+├── README.md
+├── pyproject.toml               ← Python 依赖 + uv 配置
+├── uv.lock                      ← 精确版本锁 (可复现)
+├── shell.nix                    ← 只提供 ngspice (不是 Python)
 │
-├── analoggym/                   ← [外部] AnalogGym 开源benchmark
-│   ├── RGNN_RL/                 ←    仿真环境 + RL 代码
-│   └── PDK/                     ←    SKY130 工艺包
+├── analoggym/                   ← [外部] AnalogGym 开源 benchmark
+├── llana/                       ← [外部] LLANA (LLM surrogate BO)
+├── llambo/                      ← [外部] LLAMBO (LLM Bayesian Optimization)
 │
-├── bo_baseline/                 ← [自建] 贝叶斯优化求解器
-│   └── bo_solver.py             ←    GP + EI (BoTorch)
-│
+├── bo_baseline/                 ← [自建] 贝叶斯优化求解器 (BoTorch GP+EI)
 ├── llmbo/                       ← [自建] LLM+BO 求解器
-│   ├── llm_interface.py         ←    LLM API 封装 (Anthropic SDK)
-│   └── llmbo_solver.py          ←    BO + LLM 混合候选生成
-│
 ├── runner/                      ← [自建] 实验运行器
-│   └── experiment.py            ←    实验循环、结果保存/加载/对比
-│
 ├── env_interface/               ← [自建] AnalogGym 适配
-│   └── analoggym_adapter.py     ←    封装为统一评估接口
+├── experiments/                 ← [自建] 实验入口 (run.py, run_rl.py, run_llana.py)
+├── tests/                       ← [自建] 单元测试
+├── scripts/                     ← LLANA patch 文件
 │
-├── experiments/                 ← [自建] 实验入口
-│   ├── run.py                   ←    BO / LLM+BO
-│   └── run_rl.py                ←    RL (DDPG+RGCN)
-│
-├── tests/                       ← [自建] 15 个单元测试
-├── results/                     ← 实验结果 (JSON, 不入 git)
+├── results/                     ← 实验结果 (JSON, gitignored)
 ├── report/                      ← 作业报告
-└── docs/                        ← 设计文档
+└── docs/                        ← 参考文档
 ```
 
-## 依赖
+## 环境
 
-- **Python** ≥ 3.10
-- **Ngspice** ≥ 41 (v45 已验证)
-- **SKY130 PDK**（AnalogGym 自带，需解压）
+### Python 环境
 
-### Python 包
-
-```
-pip install botorch gpytorch numpy anthropic gymnasium tabulate torch-geometric pytest
-```
-
-### 初始化
+使用 [uv](https://docs.astral.sh/uv/) 管理 Python 依赖，所有包声明在 `pyproject.toml`，精确版本锁在 `uv.lock`。
 
 ```bash
-# Clone AnalogGym
-git clone https://github.com/CODA-Team/AnalogGym.git analoggym
-
-# 解压 PDK
-unzip analoggym/PDK/sky130_pdk.zip -d analoggym/RGNN_RL/mosfet_model/
-
-# 验证
-python -m pytest tests/ -v
-
-# Clone LLANA (LLM-Enhanced BO, arXiv 2406.05250)
-git clone --depth 1 https://github.com/dekura/LLANA.git llana
-cp scripts/llana_patches/llambo/*.py llana/llambo/
+uv sync                          # 创建 .venv/ 并安装所有依赖
+uv run python ...                # 在 .venv/ 中运行 Python
+uv run pytest tests/ -v          # 运行测试
 ```
 
-### Nix 用户
+### Ngspice
 
-项目提供了 `shell.nix`，一键进入开发环境：
+`shell.nix` 只提供 `ngspice` 系统二进制（仿真器），不碰 Python：
 
 ```bash
-nix-shell
+nix-shell --run "uv run python experiments/run.py --method bo"
 ```
 
-需自行配置 LLM API 环境变量（见下方）。
+不用 Nix 的话，系统装好 ngspice 后直接 `uv run python ...` 即可。
 
-## LLM API 配置
+### LLM API 配置
 
-LLM+BO 实验需要 Anthropic 兼容 API。通过环境变量配置：
+LLM+BO 实验需要 Anthropic 兼容 API，通过环境变量配置：
 
 ```bash
-export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"   # 或其他兼容端点
+export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"
 export ANTHROPIC_AUTH_TOKEN="your-api-key"
 export ANTHROPIC_MODEL="your-model-name"
 ```
 
-支持的兼容端点：DeepSeek、Qwen (DashScope)、火山引擎等。
+LLANA 使用 OpenAI 兼容 endpoint（DeepSeek），配置方法见 `scripts/llana_patches/` 相关注释。
+
+## 初始化
+
+```bash
+# Clone vendored repos
+git clone https://github.com/CODA-Team/AnalogGym.git analoggym
+git clone --depth 1 https://github.com/dekura/LLANA.git llana
+cp scripts/llana_patches/llambo/*.py llana/llambo/
+
+# 解压 PDK
+unzip analoggym/PDK/sky130_pdk.zip -d analoggym/RGNN_RL/mosfet_model/
+
+# 安装 Python 依赖
+uv sync
+
+# 验证
+uv run pytest tests/ -v
+```
 
 ## 运行实验
 
 ```bash
 # BO 实验
-python experiments/run.py --method bo --iterations 20
+uv run python experiments/run.py --method bo --iterations 20
 
 # LLM+BO 实验 (需先配置 API 环境变量)
-python experiments/run.py --method llmbo --iterations 20
+uv run python experiments/run.py --method llmbo --iterations 20
 
 # RL 实验
-python experiments/run_rl.py --steps 500
+uv run python experiments/run_rl.py --steps 500
 
-# LLANA 实验 (LLM 替代 GP 做 surrogate + acquisition, 需先配置 LLANA)
-nix-shell -p ngspice --run "python experiments/run_llana.py"
+# LLANA 实验 (LLM 替代 GP 做 surrogate + acquisition)
+nix-shell --run "uv run python experiments/run_llana.py"
 
-# 快速验证 LLANA 管道 (3+3 轮)
-LLANA_TRIALS=3 LLANA_INITIAL=3 nix-shell -p ngspice --run \
-    "python experiments/run_llana.py"
+# 快速验证 LLANA (3+3 轮)
+LLANA_TRIALS=3 LLANA_INITIAL=3 \
+  nix-shell --run "uv run python experiments/run_llana.py"
 
 # 查看结果
-python -c "
+uv run python -c "
 from runner.experiment import ExperimentRunner
 bo = ExperimentRunner.load_results('results/bo_nmcf_results.json')
 llmbo = ExperimentRunner.load_results('results/llmbo_nmcf_results.json')
@@ -131,10 +125,6 @@ print(ExperimentRunner.compare([bo, llmbo]))
 - **RL 潜力最大**：200 步达 -1.24，但需更多样本
 - **LLM 方法均未超越 BO**：自建 LLM+BO 和 LLANA 均未带来优化效果提升
 - **LLANA 不适合高维连续空间**：LLM 在 24 维空间中探索退化为离散模式，无法替代 GP
-
-## dev_params.py
-
-生成 Spice 命令提取 BSIM4 晶体管参数（Vth, gm, gds 等），供 RL 状态表示。BO/LLMBO 仅用 FoM，不需要。
 
 ## 参考
 

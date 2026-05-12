@@ -1,0 +1,50 @@
+[project]
+name = "analogopt"
+version = "0.1.0"
+description = "LLM-assisted analog circuit parameter optimization"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+    "aiohttp",
+    "anthropic",
+    "botorch",
+    "ConfigSpace",
+    "emcee",
+    "gpytorch",
+    "gymnasium",
+    "h5py",
+    "jax",
+    "langchain",
+    "langchain-core",
+    "matplotlib",
+    "numpy",
+    "ollama",
+    "openai",
+    "optuna",
+    "pandas",
+    "pyarrow",
+    "rich",
+    "scikit-learn",
+    "scipy",
+    "tiktoken",
+    "torch",
+    "torch-geometric",
+]
+
+[dependency-groups]
+dev = [
+    "ipython",
+    "pytest",
+]
+baselines = [
+    "HEBO",
+    "nashpobench2api",
+    "openml",
+    "parzen_estimator",
+    "scikit-optimize",
+    "smac<2.0",
+    "uncertainty_toolbox",
+]
+
+[tool.uv]
+extra-index-url = ["https://download.pytorch.org/whl/cpu"]
