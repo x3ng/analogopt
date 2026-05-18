@@ -1,6 +1,6 @@
 # LLM辅助模拟电路参数优化
 
-对比 **RL** vs **BO** vs **LLM+BO** 在 NMCF 放大器电路参数优化上的表现。
+对比 **RL** vs **BO** vs **LLM+BO** vs **LLANA** 在 NMCF 放大器电路参数优化上的表现。
 
 ## 项目结构
 
@@ -15,15 +15,12 @@ analogopt/
 ├── llana/                       ← [外部] LLANA (LLM surrogate BO)
 ├── llambo/                      ← [外部] LLAMBO (LLM Bayesian Optimization)
 │
-├── bo_baseline/                 ← [自建] 贝叶斯优化求解器 (BoTorch GP+EI)
-├── llmbo/                       ← [自建] LLM+BO 求解器
-├── runner/                      ← [自建] 实验运行器
-├── env_interface/               ← [自建] AnalogGym 适配
-├── experiments/                 ← [自建] 实验入口 (run.py, run_rl.py, run_llana.py)
-├── tests/                       ← [自建] 单元测试
+├── llmbo/                       ← [自建] BO + LLM+BO 求解器 (BoTorch GP+EI / LLM 增强)
+├── env_interface/               ← [自建] AnalogGym 适配层
+├── experiments/                 ← [自建] 实验入口 + 工具类
 ├── scripts/                     ← LLANA patch 文件
 │
-├── results/                     ← 实验结果 (JSON, gitignored)
+├── results/                     ← 实验结果 (JSON)
 ├── report/                      ← 作业报告
 └── docs/                        ← 参考文档
 ```
@@ -32,12 +29,11 @@ analogopt/
 
 ### Python 环境
 
-使用 [uv](https://docs.astral.sh/uv/) 管理 Python 依赖，所有包声明在 `pyproject.toml`，精确版本锁在 `uv.lock`。
+使用 [uv](https://docs.astral.sh/uv/) 管理 Python 依赖：
 
 ```bash
 uv sync                          # 创建 .venv/ 并安装所有依赖
 uv run python ...                # 在 .venv/ 中运行 Python
-uv run pytest tests/ -v          # 运行测试
 ```
 
 ### Ngspice
@@ -60,7 +56,7 @@ export ANTHROPIC_AUTH_TOKEN="your-api-key"
 export ANTHROPIC_MODEL="your-model-name"
 ```
 
-LLANA 使用 OpenAI 兼容 endpoint（DeepSeek），配置方法见 `scripts/llana_patches/` 相关注释。
+LLANA 使用 OpenAI 兼容 endpoint，配置方法见 `experiments/run_llana.py` 头部注释。
 
 ## 初始化
 
@@ -75,9 +71,6 @@ unzip analoggym/PDK/sky130_pdk.zip -d analoggym/RGNN_RL/mosfet_model/
 
 # 安装 Python 依赖
 uv sync
-
-# 验证
-uv run pytest tests/ -v
 ```
 
 ## 运行实验
@@ -89,19 +82,21 @@ uv run python experiments/run.py --method bo --iterations 20
 # LLM+BO 实验 (需先配置 API 环境变量)
 uv run python experiments/run.py --method llmbo --iterations 20
 
+# 同时跑 BO + LLM+BO
+uv run python experiments/run.py --method both --iterations 20
+
 # RL 实验
 uv run python experiments/run_rl.py --steps 500
 
 # LLANA 实验 (LLM 替代 GP 做 surrogate + acquisition)
-nix-shell --run "uv run python experiments/run_llana.py"
+uv run python experiments/run_llana.py
 
 # 快速验证 LLANA (3+3 轮)
-LLANA_TRIALS=3 LLANA_INITIAL=3 \
-  nix-shell --run "uv run python experiments/run_llana.py"
+LLANA_TRIALS=3 LLANA_INITIAL=3 uv run python experiments/run_llana.py
 
 # 查看结果
 uv run python -c "
-from runner.experiment import ExperimentRunner
+from experiments.utils import ExperimentRunner
 bo = ExperimentRunner.load_results('results/bo_nmcf_results.json')
 llmbo = ExperimentRunner.load_results('results/llmbo_nmcf_results.json')
 print(ExperimentRunner.compare([bo, llmbo]))

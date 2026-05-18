@@ -1,7 +1,6 @@
 """Run RL baseline (DDPG + RGCN) on NMCF circuit and record results."""
 import os
 import sys
-import json
 import time
 import numpy as np
 from pathlib import Path
@@ -20,6 +19,8 @@ from AMP_NMCF import AMPNMCFEnv
 import gymnasium as gym
 
 PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+from experiments.utils import ExperimentRunner
 RESULTS_DIR = PROJECT_ROOT / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
@@ -90,9 +91,8 @@ def run_rl(num_steps: int = 1000, memory_size: int = 10000, batch_size: int = 12
         "reward_history": rews_buf.tolist(),
     }
 
-    output_path = RESULTS_DIR / "rl_nmcf_results.json"
-    with open(output_path, "w") as f:
-        json.dump(result, f, indent=2)
+    output_path = str(RESULTS_DIR / "rl_nmcf_results.json")
+    ExperimentRunner.save_results(result, output_path)
 
     print(f"  Best FOM: {best_reward:.4f} (step {best_idx})")
     print(f"  Time: {elapsed:.1f}s ({num_steps / elapsed:.1f} steps/s)")

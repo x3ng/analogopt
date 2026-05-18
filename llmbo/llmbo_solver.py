@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List, Optional
 
-from bo_baseline.bo_solver import BOSolver
+from llmbo.bo_solver import BOSolver
 from llmbo.llm_interface import LLMInterface
 
 

@@ -26,6 +26,7 @@ dependencies = [
     "rich",
     "scikit-learn",
     "scipy",
+    "tabulate>=0.10.0",
     "tiktoken",
     "torch",
     "torch-geometric",

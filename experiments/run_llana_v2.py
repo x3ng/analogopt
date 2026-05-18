@@ -1,39 +1,10 @@
-"""Run LLANA (LLM-Enhanced BO) experiment on AnalogGym NMCF circuit.
+"""Run LLANA v2 — improved prompt with circuit-aware feature names and domain context.
 
-LLANA replaces the GP surrogate and acquisition function with LLM in-context
-learning, using few-shot prompting instead of mathematical models.
-
-Based on: https://github.com/dekura/LLANA (arXiv 2406.05250)
-
-The default parameters are conservative (n_gens=3, n_candidates=5, n_templates=1)
-to avoid overwhelming the API with concurrent requests. Each trial makes ~15
-API calls (down from ~200 with the original LLANA defaults of 10/10/2).
-
-Usage:
-    # Full experiment (5 initial + 15 trials, ~60 min)
-    nix-shell -p ngspice --run "python experiments/run_llana.py"
-
-    # Quick smoke test (3+3, ~15 min)
-    LLANA_TRIALS=3 LLANA_INITIAL=3 nix-shell -p ngspice --run \\
-        "python experiments/run_llana.py"
-
-    # Use Volcengine Coding Plan
-    LLANA_BASE_URL="https://ark.cn-beijing.volces.com/api/coding/v3" \\
-    LLANA_MODEL="deepseek-v3.2" \\
-    nix-shell -p ngspice --run "python experiments/run_llana.py"
-
-Configuration via environment variables:
-    LLANA_BASE_URL  — OpenAI-compatible base URL (default: https://api.deepseek.com)
-    LLANA_API_KEY   — API key (default: ANTHROPIC_AUTH_TOKEN)
-    LLANA_MODEL     — model name (default: deepseek-chat)
-    LLANA_TRIALS    — optimization trials (default: 15)
-    LLANA_INITIAL   — initial random samples (default: 5)
-    LLANA_GENS      — LLM generations per candidate (default: 3)
-    LLANA_CANDIDATES— candidate points per trial (default: 5)
-    LLANA_TEMPLATES — prompt templates (default: 1)
-Note: deepseek-chat is used instead of deepseek-v4-pro because the reasoning
-model (v4-pro) returns empty content for long prompts via the OpenAI-compatible
-endpoint.
+Key difference from run_llana.py:
+  - Feature names: "W_M0", "L_M0", ... instead of "x0", "x1", ...
+  - Model description includes circuit topology context
+  - Metric described as "Figure of Merit" instead of "mean squared error"
+  - Same normalized [-1, 1] bounds (required by AnalogGym env)
 """
 
 import os
@@ -49,6 +20,40 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "llana"))
 from env_interface.analoggym_adapter import AnalogGymInterface
 from experiments.utils import ExperimentRunner
 
+# 24 NMCF amplifier design parameters (SKY130 PDK)
+# These replace the meaningless x0..x23 with physically meaningful names
+PARAM_NAMES = [
+    # Bias PMOS cascade (M0-M3)
+    "W_M0", "L_M0", "M_M0",
+    # gm1 differential pair PMOS (M8-M9)
+    "W_M8", "L_M8", "M_M8",
+    # gm2 stage PMOS (M10)
+    "W_M10", "L_M10", "M_M10",
+    # gmf2 feedforward PMOS (M11)
+    "W_M11", "L_M11", "M_M11",
+    # Bias NMOS cascade (M17-M20)
+    "W_M17", "L_M17", "M_M17",
+    # Load NMOS (M21-M22)
+    "W_M21", "L_M21", "M_M21",
+    # gm3 output NMOS (M23)
+    "W_M23", "L_M23", "M_M23",
+    # Bias current
+    "Ib",
+    # Compensation capacitor multipliers
+    "M_C0", "M_C1",
+]
+
+# NMCF amplifier topology description — injected into the model name field
+# so LLANA includes it in the prompt prefix
+CIRCUIT_DESCRIPTION = (
+    "NMCF_Amplifier (SKY130, 3-stage nested Miller compensation with feedforward, "
+    "24 design parameters: 7 MOSFET pairs with width/length/multiplier, "
+    "bias current Ib, compensation caps M_C0/M_C1. "
+    "Optimization goal: maximize Figure of Merit = sum of 11 performance scores "
+    "including DC gain, GBW, phase margin, power, slew rate, settling time, "
+    "CMRR, PSRR, offset, and temperature coefficient)"
+)
+
 
 def main():
     base_url = os.environ.get("LLANA_BASE_URL", "https://api.deepseek.com")
@@ -56,42 +61,39 @@ def main():
     model = os.environ.get("LLANA_MODEL", "deepseek-chat")
     n_trials = int(os.environ.get("LLANA_TRIALS", "15"))
     n_initial = int(os.environ.get("LLANA_INITIAL", "5"))
-    # Use conservative defaults to avoid API rate limits
     n_gens = int(os.environ.get("LLANA_GENS", "3"))
     n_candidates = int(os.environ.get("LLANA_CANDIDATES", "5"))
     n_templates = int(os.environ.get("LLANA_TEMPLATES", "1"))
 
-    # Ensure API key is available for OpenAI SDK
     os.environ.setdefault("OPENAI_API_KEY", api_key)
 
-    print(f"=== LLANA (LLM-Enhanced BO) on NMCF ===")
+    print(f"=== LLANA v2 (Circuit-Aware Prompt) on NMCF ===")
     print(f"  base_url: {base_url}")
     print(f"  model: {model}")
     print(f"  n_trials: {n_trials}, n_initial: {n_initial}")
-    print(f"  n_gens: {n_gens}, n_candidates: {n_candidates}, n_templates: {n_templates}")
+    print(f"  n_gens: {n_gens}, n_candidates: {n_candidates}")
+    print(f"  feature names: {PARAM_NAMES[0]}, {PARAM_NAMES[1]}, ..., {PARAM_NAMES[-1]}")
 
     env = AnalogGymInterface()
     bounds = env.bounds  # shape (24, 2), normalized [-1, 1]
     n_dims = bounds.shape[0]
 
-    # Build task_context for LLANA
     task_context = {
-        "model": "NMCF_Amplifier",
+        "model": CIRCUIT_DESCRIPTION,
         "task": "regression",
         "tot_feats": n_dims,
         "cat_feats": 0,
         "num_feats": n_dims,
         "n_classes": 1,
-        "metric": "neg_mean_squared_error",
+        "metric": "Figure_of_Merit",
         "lower_is_better": False,   # FoM: higher is better
         "num_samples": 1,
         "hyperparameter_constraints": {
-            f"x{i}": ["float", "linear", [float(bounds[i, 0]), float(bounds[i, 1])]]
+            PARAM_NAMES[i]: ["float", "linear", [float(bounds[i, 0]), float(bounds[i, 1])]]
             for i in range(n_dims)
         },
     }
 
-    # Track all evaluations for result recording
     all_iterations = []
 
     def init_f(n_samples):
@@ -99,12 +101,12 @@ def main():
         for _ in range(n_samples):
             cfg = {}
             for i in range(n_dims):
-                cfg[f"x{i}"] = float(np.random.uniform(bounds[i, 0], bounds[i, 1]))
+                cfg[PARAM_NAMES[i]] = float(np.random.uniform(bounds[i, 0], bounds[i, 1]))
             configs.append(cfg)
         return configs
 
     def bbox_eval_f(config):
-        x = np.array([config[f"x{i}"] for i in range(n_dims)], dtype=np.float64)
+        x = np.array([config[name] for name in PARAM_NAMES], dtype=np.float64)
         fom = float(env.evaluate(x))
         all_iterations.append({
             "params": x.tolist(),
@@ -112,7 +114,6 @@ def main():
         })
         return config, {"score": fom, "generalization_score": fom}
 
-    # Import LLAMBO from the cloned llana directory
     from llambo.llambo import LLAMBO
 
     start_time = time.time()
@@ -135,19 +136,18 @@ def main():
         shuffle_features=False,
     )
 
-    output_path = Path(__file__).parent.parent / "results" / "llana_nmcf_results.json"
+    output_path = Path(__file__).parent.parent / "results" / "llana_v2_nmcf_results.json"
 
     try:
         configs_df, fvals_df = llambo.optimize()
     except Exception as e:
-        print(f"\n!!! LLANA crashed: {e}")
+        print(f"\n!!! LLANA v2 crashed: {e}")
         print(f"  Saving partial results ({len(all_iterations)} evals) to {output_path}")
         import traceback
         traceback.print_exc()
-        # Save whatever we have
         if all_iterations:
             partial = {
-                "method": "llana",
+                "method": "llana_v2",
                 "circuit": "NMCF",
                 "n_iterations": len(all_iterations),
                 "seed": 42,
@@ -157,7 +157,8 @@ def main():
                 "config": {"base_url": base_url, "model": model,
                            "n_trials": n_trials, "n_initial": n_initial,
                            "n_gens": n_gens, "n_candidates": n_candidates,
-                           "n_templates": n_templates},
+                           "n_templates": n_templates,
+                           "prompt": "circuit-aware"},
                 "iterations": all_iterations,
                 "crashed": True,
             }
@@ -169,13 +170,12 @@ def main():
     total_time = time.time() - start_time
     env.close()
 
-    # Build results in same format as existing experiments
     best_idx = fvals_df["score"].idxmax()
     best_fom = float(fvals_df["score"].max())
-    best_params = [float(configs_df.iloc[best_idx][f"x{i}"]) for i in range(n_dims)]
+    best_params = [float(configs_df.iloc[best_idx][name]) for name in PARAM_NAMES]
 
     results = {
-        "method": "llana",
+        "method": "llana_v2",
         "circuit": "NMCF",
         "n_iterations": len(all_iterations),
         "seed": 42,
@@ -190,19 +190,19 @@ def main():
             "n_gens": n_gens,
             "n_candidates": n_candidates,
             "n_templates": n_templates,
+            "prompt": "circuit-aware",
         },
         "iterations": all_iterations,
     }
 
     ExperimentRunner.save_results(results, str(output_path))
 
-    print(f"\n=== LLANA Results ===")
+    print(f"\n=== LLANA v2 Results ===")
     print(f"  Best FoM: {best_fom:.4f}")
     print(f"  Total evals: {len(all_iterations)}")
     print(f"  Total time: {total_time:.1f}s")
     print(f"  Saved to: {output_path}")
 
-    # Quick comparison with existing results
     try:
         bo = ExperimentRunner.load_results(
             str(Path(__file__).parent.parent / "results" / "bo_nmcf_results.json")
