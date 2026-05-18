@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "llana"))
 
-from env_interface.analoggym_adapter import AnalogGymInterface
+from solver.adapter import AnalogGymInterface
 from experiments.utils import ExperimentRunner
 
 # 24 NMCF amplifier design parameters (SKY130 PDK)

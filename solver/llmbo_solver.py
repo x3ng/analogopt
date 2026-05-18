@@ -1,8 +1,8 @@
 import numpy as np
 from typing import List, Optional
 
-from llmbo.bo_solver import BOSolver
-from llmbo.llm_interface import LLMInterface
+from solver.bo_solver import BOSolver
+from solver.llm_interface import LLMInterface
 
 
 class LLMBOSolver:

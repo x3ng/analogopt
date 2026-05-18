@@ -15,10 +15,9 @@ analogopt/
 ├── llana/                       ← [外部] LLANA (LLM surrogate BO)
 ├── llambo/                      ← [外部] LLAMBO (LLM Bayesian Optimization)
 │
-├── llmbo/                       ← [自建] BO + LLM+BO 求解器 (BoTorch GP+EI / LLM 增强)
-├── env_interface/               ← [自建] AnalogGym 适配层
+├── solver/                       ← [自建] 求解器：BO + LLM+BO + AnalogGym 适配
 ├── experiments/                 ← [自建] 实验入口 + 工具类
-├── scripts/                     ← LLANA patch 文件
+├── patches/                     ← LLANA patch 文件
 │
 ├── results/                     ← 实验结果 (JSON)
 ├── report/                      ← 作业报告
@@ -64,7 +63,7 @@ LLANA 使用 OpenAI 兼容 endpoint，配置方法见 `experiments/run_llana.py`
 # Clone vendored repos
 git clone https://github.com/CODA-Team/AnalogGym.git analoggym
 git clone --depth 1 https://github.com/dekura/LLANA.git llana
-cp scripts/llana_patches/llambo/*.py llana/llambo/
+cp patches/llana/llambo/*.py llana/llambo/
 
 # 解压 PDK
 unzip analoggym/PDK/sky130_pdk.zip -d analoggym/RGNN_RL/mosfet_model/

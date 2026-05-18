@@ -8,10 +8,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from experiments.utils import ExperimentRunner, RunConfig
-from llmbo.bo_solver import BOSolver
-from llmbo.llm_interface import LLMInterface
-from llmbo.llmbo_solver import LLMBOSolver
-from env_interface.analoggym_adapter import AnalogGymInterface
+from solver.bo_solver import BOSolver
+from solver.llm_interface import LLMInterface
+from solver.llmbo_solver import LLMBOSolver
+from solver.adapter import AnalogGymInterface
 
 RESULTS_DIR = Path(__file__).parent.parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
